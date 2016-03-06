@@ -1,0 +1,200 @@
+# Machine Learning Course project
+
+### Completed assignment link on GitHub:
+
+GitHub Repo - [Click Here](https://github.com/alamgirmunshi/MachineLearning)
+
+## Assignment Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+
+## Data Sources
+
+Training data down link [Training Data](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv)
+
+Testing data down link [Testing Data](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv)
+
+
+## Expected Output
+
+The goal of the project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. One may use any of the other variables to predict with. A report should be created to describing how the model was build, how you it was d cross validated, what was the expected out of sample error, and the choices made. The prediction model should predict 20 different test cases.
+
+#Goal 1
+The submission should consist of a link to a Github repo with a R markdown and compiled HTML file describing analysis. The the text of the writeup should be < 2000 words and the number of figures to be less than 5. 
+
+#Goal 2
+Machine learning algorithm should contain 20 test cases available in the test data above. Predictions should be in appropriate format to the programming assignment for automated grading.  
+
+## Detailed Code File
+
+Analysis.R file is available in the gitHub repo to review the code developed to complete the assignment. 
+
+## Load Required Packages
+
+Assumption was maid that all required packages has already been installed on the machine. In case if packages are not already installed. , please use require("package name") or install.packages("package name") to load the package in your machine. Thanks..
+
+### Load caret, rpart, rpart.plot, RColorBrewer, rattle, randomForest packages
+
+```{r, results='hide'}
+
+library(RColorBrewer)
+library(caret)
+library(randomForest)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+
+```
+
+### Set seed to reproduce same results 
+
+```{r}
+set.seed(33125)
+```
+
+### Loading data in machine
+
+For this assignment, data has been loaded from the provided web site.
+
+```{r}
+#trainUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-Training.csv"
+#testUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-Testing.csv"
+#Assuming above file was downloaded and placed in current working directory
+Training <- read.csv("pml-training.csv", na.strings=c("NA","#DIV/0!",""))
+Testing <- read.csv("pml-testing.csv", na.strings=c("NA","#DIV/0!",""))
+```
+
+### Partitioning the dataset to training and testing 
+
+Based on the lecture notes, below code is used to create training and testing dataset. 60% data is considered for the training set and remaining 40% is considered for testing the model.
+
+
+```{r, results='hide'}
+inTrain <- createDataPartition(y=Training$classe, p=0.6, list=FALSE)
+datTraining <- Training[inTrain, ]; datTesting <- Training[-inTrain, ]
+dim(datTraining)
+dim(datTesting)
+```
+
+### Data Cleansing
+
+Code below used to clean the dataset.
+
+```{r,results='hide'}
+datDataNearZeroVariable <- nearZeroVar(datTraining, saveMetrics=TRUE)
+datNearZeroVariables <- names(datTraining) %in% c("new_window", "kurtosis_roll_belt", 
+                                                  "kurtosis_picth_belt","kurtosis_yaw_belt", "skewness_roll_belt", "skewness_roll_belt.1", 
+                                                  "skewness_yaw_belt","max_yaw_belt", "min_yaw_belt", "amplitude_yaw_belt", "avg_roll_arm", 
+                                                  "stddev_roll_arm","var_roll_arm", "avg_pitch_arm", "stddev_pitch_arm", "var_pitch_arm", 
+                                                  "avg_yaw_arm","stddev_yaw_arm", "var_yaw_arm", "kurtosis_roll_arm", "kurtosis_picth_arm",
+                                                  "kurtosis_yaw_arm", "skewness_roll_arm", "skewness_pitch_arm", "skewness_yaw_arm",
+                                                  "max_roll_arm", "min_roll_arm", "min_pitch_arm", "amplitude_roll_arm", "amplitude_pitch_arm",
+                                                  "kurtosis_roll_dumbbell", "kurtosis_picth_dumbbell", "kurtosis_yaw_dumbbell", 
+                                                  "skewness_roll_dumbbell","skewness_pitch_dumbbell", "skewness_yaw_dumbbell", "max_yaw_dumbbell", 
+                                                  "min_yaw_dumbbell","amplitude_yaw_dumbbell", "kurtosis_roll_forearm", "kurtosis_picth_forearm", 
+                                                  "kurtosis_yaw_forearm","skewness_roll_forearm", "skewness_pitch_forearm", "skewness_yaw_forearm", 
+                                                  "max_roll_forearm","max_yaw_forearm", "min_roll_forearm", "min_yaw_forearm", "amplitude_roll_forearm",
+                                                  "amplitude_yaw_forearm", "avg_roll_forearm", "stddev_roll_forearm", "var_roll_forearm",
+                                                  "avg_pitch_forearm", "stddev_pitch_forearm", "var_pitch_forearm", "avg_yaw_forearm",
+                                                  "stddev_yaw_forearm", "var_yaw_forearm")
+datTraining <- datTraining[!datNearZeroVariables]
+dim(datTraining)
+```
+
+### Remove first column of the dataset
+
+```{r}
+datTraining <- datTraining[c(-1)]
+```
+
+### Updating the variables having NA values
+
+```{r}
+TrainingVer3 <- datTraining #a subset to iterate in loop
+for(i in 1:length(datTraining)) { #every column in dataset
+  if( sum( is.na( datTraining[, i] ) ) /nrow(datTraining) >= .6 ) { #if n?? NAs > 60% of total observations
+    for(j in 1:length(TrainingVer3)) {
+      if( length( grep(names(datTraining[i]), names(TrainingVer3)[j]) ) ==1)  { #if the columns are the same:
+        TrainingVer3 <- TrainingVer3[ , -j] #Remove that column
+      }
+    }
+  }
+}
+dim(TrainingVer3)
+datTraining <- TrainingVer3
+rm(TrainingVer3)
+```
+
+### Reproduce same transformations on the testing dataset
+
+```{r}
+DataCleanV1 <- colnames(datTraining)
+DataCleanV2 <- colnames(datTraining[, -58])
+datTesting <- datTesting[DataCleanV1]
+Testing <- Testing[DataCleanV2]
+dim(datTesting)
+dim(Testing)
+```
+
+### Coerce the data into the same type, in order to ensure proper functioning of Decision Trees and especially RandomForest Algorithm with the Test data set.
+
+```{r}
+for (i in 1:length(Testing) ) {
+  for(j in 1:length(datTraining)) {
+    if( length( grep(names(datTraining[i]), names(Testing)[j]) ) ==1)  {
+      class(Testing[j]) <- class(datTraining[i])
+    }
+  }
+}
+Testing <- rbind(datTraining[2, -58] , Testing)
+Testing <- Testing[-1,]
+```
+
+### ML Algortihms for Predictions: Decision Tree
+
+```{r}
+modFitV1 <- rpart(classe ~ ., data=datTraining, method="class")
+```
+
+### Decision Tree
+
+```{r}
+fancyRpartPlot(modFitV1)
+```
+
+### Prediction Algorithm and Confusion Matrix
+```{r, results='hide'}
+predictionsV1 <- predict(modFitV1, datTesting, type = "class")
+confusionMatrix(predictionsV1, datTesting$classe)
+```
+
+### ML Algortihms for Predictions: Random Forest
+
+```{r, results='hide'}
+modFitV2 <- randomForest(classe ~. , data=datTraining)
+predictionsV2 <- predict(modFitV2, datTesting, type = "class")
+confusionMatrix(predictionsV2, datTesting$classe)
+```
+
+## Executing the test cases of the assignment
+
+```{r}
+predictionsV3 <- predict(modFitV2, Testing, type = "class")
+```
+
+### Create the files and copy in current working directory
+Please change the directory using setwd() as needed.
+
+```{r}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("question_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(predictionsV3)
+```
+
+### Thanks for your time evaluating the assignment!!!
